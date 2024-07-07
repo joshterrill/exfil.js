@@ -1,0 +1,27 @@
+{
+  "name": "exfil.js",
+  "description": "A client-side only swiss-army knife of exfiltration methods",
+  "version": "0.0.1",
+  "main": "index.js",
+  "devDependencies": {},
+  "scripts": {
+    "start": "node index.js",
+    "generate:bundle": "browserify src/**/*.js -o static/bundle.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/joshterrill/exfil.js.git"
+  },
+  "author": "Josh Terrill",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/joshterrill/exfil.js/issues"
+  },
+  "homepage": "https://github.com/joshterrill/exfil.js#readme",
+  "dependencies": {
+    "jimp": "^0.22.12",
+    "qrcode": "^1.5.3",
+    "sharp": "^0.33.4"
+  }
+}

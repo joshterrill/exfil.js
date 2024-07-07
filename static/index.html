@@ -1,0 +1,200 @@
+<!doctype html>
+<html>
+<head>
+    <title>exfil.js</title>
+    <style>
+        .qr-container {
+            text-align: center;
+        }
+
+        .nav-buttons {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin-top: 10px;
+        }
+
+        .nav-buttons button {
+            margin: 0 10px;
+        }
+    </style>
+    <script src="/bundle.js"></script>
+</head>
+
+<body>
+    <h1>exfil.js</h1>
+
+    <ul>
+        <li><a href="">Hide data in an image</a></li>
+        <li><a href="">Hide data in audio</a></li>
+        <li><a href="">Hide data in the audio of a video</a></li>
+        <li><a href="">Hide data in QR code(s)</a></li>
+        <li><a href="">Generate image of n size</a></li>
+        <li><a href="">Split data into chunks</a></li>
+    </ul>
+
+    <div id="generate-image-size">
+        <input type="number" id="size-input" placeholder="Enter size in mb" />
+        <button id="generate-button" onclick="generateImageOfNSize()">Generate BMP</button>
+        <a id="download-link" style="display:none;">Download BMP</a>
+    </div>
+
+    <div id="qr-code" style="display:none;">
+        <textarea id="qrcode-text"></textarea> <br />
+        <button onclick="displayQRCodes()">Generate</button> <br />
+        <div id="qr-code-results" class="qr-container"></div>
+        <div class="nav-buttons">
+            <button id="prev-button">&larr; Prev</button>
+            <span id="qr-status"></span>
+            <button id="next-button">Next &rarr;</button>
+        </div>
+    </div>
+
+    <div id="data-in-image" style="display:none">
+        <input type="file" id="file" /> <br />
+        <input type="text" id="text"> <br />
+        <button onclick="generateImageInData()">Generate</button>
+        <button onclick="extractImageInData()">Extract</button>
+    </div>
+
+    <script>
+        function generateImageOfNSize() {
+            const sizeInMb = parseInt(document.getElementById('size-input').value);
+            if (isNaN(sizeInMb) || sizeInMb <= 0) {
+                alert('Please enter a valid number of bytes.');
+                return;
+            }
+
+            const bmpData = generateBMP(sizeInMb);
+            const blob = new Blob([bmpData], { type: 'image/bmp' });
+            const url = URL.createObjectURL(blob);
+
+            const downloadLink = document.createElement('a');
+            downloadLink.href = url;
+            downloadLink.download = 'image.png';
+
+            document.body.appendChild(downloadLink);
+            downloadLink.click();
+
+            document.body.removeChild(downloadLink);
+            URL.revokeObjectURL(url);
+        }
+
+        function generateBMP(sizeInMB) {
+            const sizeInBytes = sizeInMB * 1024 * 1024;
+            const fileHeaderSize = 14;
+            const infoHeaderSize = 40;
+            const headersSize = fileHeaderSize + infoHeaderSize;
+            const dataSize = sizeInBytes - headersSize;
+
+            if (dataSize <= 0) {
+                throw new Error('Size too small for BMP headers.');
+            }
+
+            const width = Math.floor(Math.sqrt(dataSize / 3));
+            const height = Math.ceil(dataSize / (3 * width));
+            const paddedWidth = (width + 3) & ~3;
+            const pixelDataSize = paddedWidth * height * 3;
+            const totalSize = fileHeaderSize + infoHeaderSize + pixelDataSize;
+
+            const buffer = new ArrayBuffer(totalSize);
+            const view = new DataView(buffer);
+
+            // BMP File Header
+            view.setUint8(0, 0x42); // 'B'
+            view.setUint8(1, 0x4D); // 'M'
+            view.setUint32(2, totalSize, true);
+            view.setUint32(6, 0, true);
+            view.setUint32(10, headersSize, true);
+
+            // DIB Header (BITMAPINFOHEADER)
+            view.setUint32(14, infoHeaderSize, true);
+            view.setInt32(18, width, true);
+            view.setInt32(22, height, true);
+            view.setUint16(26, 1, true);
+            view.setUint16(28, 24, true);
+            view.setUint32(30, 0, true);
+            view.setUint32(34, pixelDataSize, true);
+            view.setInt32(38, 0, true);
+            view.setInt32(42, 0, true);
+            view.setUint32(46, 0, true);
+            view.setUint32(50, 0, true);
+
+            // Pixel data (simple black image)
+            const pixelDataOffset = headersSize;
+            for (let i = pixelDataOffset; i < totalSize; i += 3) {
+                view.setUint8(i, 0);   // Blue
+                view.setUint8(i + 1, 0); // Green
+                view.setUint8(i + 2, 0); // Red
+            }
+
+            return buffer;
+        }
+
+        async function displayQRCodes() {
+            const holder = document.getElementById('qr-code-results');
+            holder.innerHTML = '';
+            const text = document.getElementById('qrcode-text').value;
+            const canvases = await generateQRCodes(text);
+
+            let currentIndex = 0;
+
+            function updateDisplay() {
+                holder.innerHTML = '';
+                if (canvases.length > 0) {
+                    const canvas = canvases[currentIndex];
+                    canvas.style.width = '500px';
+                    canvas.style.height = '500px';
+                    holder.appendChild(canvas);
+                    document.getElementById('qr-status').innerText = `QR Code ${currentIndex + 1} of ${canvases.length}`;
+                }
+            }
+
+            document.getElementById('prev-button').addEventListener('click', () => {
+                if (currentIndex > 0) {
+                    currentIndex--;
+                    updateDisplay();
+                }
+            });
+
+            document.getElementById('next-button').addEventListener('click', () => {
+                if (currentIndex < canvases.length - 1) {
+                    currentIndex++;
+                    updateDisplay();
+                }
+            });
+
+            updateDisplay();
+        }
+        async function extractImageInData() {
+            const file = await document.getElementById('file').files[0].arrayBuffer();
+            const image = await Jimp.read(file);
+            const text = await extractTextFromImage(image);
+            console.log(text);
+        }
+        async function generateImageInData() {
+            const file = await document.getElementById('file').files[0].arrayBuffer();
+            const image = await Jimp.read(file);
+            const text = document.getElementById('text').value;
+
+            const imageBuffer = await embedTextInImage(image, text);
+            const blob = new Blob([imageBuffer], { type: 'image/png' });
+
+            const url = URL.createObjectURL(blob);
+
+            const downloadLink = document.createElement('a');
+            downloadLink.href = url;
+            downloadLink.download = 'image.png';
+
+            document.body.appendChild(downloadLink);
+            downloadLink.click();
+
+            document.body.removeChild(downloadLink);
+            URL.revokeObjectURL(url);
+        }
+    </script>
+
+
+</body>
+
+</html>
